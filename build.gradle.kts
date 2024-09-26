@@ -13,7 +13,8 @@ plugins {
 val javaLangVersion: Int = project.properties["javaLangVersion"].toString().toInt()
 val testJavaLangVersion: Int = project.properties["testJavaLangVersion"].toString().toInt()
 
-val modularProjects: List<Project> = subprojects.filter { it.name.startsWith("doma-") }
+val bomProject: Project = project(":doma-bom")
+val modularProjects: List<Project> = subprojects.filter { it.name.startsWith("doma-") } - bomProject
 val integrationTestProjects: List<Project> = subprojects.filter { it.name.startsWith("integration-test-") }
 val unitTestProjects: List<Project> = subprojects.filter { it.name.startsWith("unit-test") }
 
@@ -82,7 +83,7 @@ allprojects {
     }
 }
 
-subprojects {
+configure(modularProjects + integrationTestProjects + unitTestProjects) {
     apply(plugin = "java")
 
     dependencies {
@@ -102,21 +103,21 @@ subprojects {
     }
 }
 
-configure(modularProjects) {
-    apply(plugin = "java-library")
+configure(modularProjects + bomProject) {
     apply(plugin = "maven-publish")
     apply(plugin = "signing")
 
-    java {
-        toolchain.languageVersion.set(JavaLanguageVersion.of(javaLangVersion))
-        withJavadocJar()
-        withSourcesJar()
+    val component = if (this == bomProject) {
+        apply(plugin = "java-platform")
+        "javaPlatform"
+    } else {
+        "java"
     }
 
     publishing {
         publications {
             create<MavenPublication>("maven") {
-                from(components["java"])
+                from(components[component])
                 pom {
                     val projectUrl: String by project
                     name.set(project.name)
@@ -156,6 +157,26 @@ configure(modularProjects) {
     }
 
     tasks {
+        build {
+            dependsOn("publishToMavenLocal")
+        }
+
+        withType<Sign>().configureEach {
+            onlyIf { isReleaseVersion }
+        }
+    }
+}
+
+configure(modularProjects) {
+    apply(plugin = "java-library")
+
+    java {
+        toolchain.languageVersion.set(JavaLanguageVersion.of(javaLangVersion))
+        withJavadocJar()
+        withSourcesJar()
+    }
+
+    tasks {
         val replaceVersionInJava by registering {
             doLast {
                 replaceVersionInArtifact(version.toString())
@@ -191,14 +212,6 @@ configure(modularProjects) {
         test {
             maxHeapSize = "1g"
             useJUnitPlatform()
-        }
-
-        build {
-            dependsOn("publishToMavenLocal")
-        }
-
-        withType<Sign>().configureEach {
-            onlyIf { isReleaseVersion }
         }
     }
 }
