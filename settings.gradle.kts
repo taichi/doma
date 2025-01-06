@@ -6,6 +6,7 @@ pluginManagement {
 
 rootProject.name = "doma"
 
+include("doma-bom")
 include("doma-core")
 include("doma-kotlin")
 include("doma-mock")
